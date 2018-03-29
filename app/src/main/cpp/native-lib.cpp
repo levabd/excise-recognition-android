@@ -27,8 +27,8 @@ Java_com_wipon_recognition_MainActivity_validate(JNIEnv *env, jobject, jlong add
     return env->NewStringUTF(hello2.c_str());
 }
 
-extern "C"
-jstring
+//extern "C"
+/*jstring
 Java_com_wipon_recognition_MainActivity_salt(JNIEnv *env, jobject instance,
                                              jlong matAddrGray,
                                              jint nbrElem) {
@@ -38,4 +38,4 @@ Java_com_wipon_recognition_MainActivity_salt(JNIEnv *env, jobject instance,
         int j = rand() % mGr.rows;
         mGr.at<uchar>(j, i) = 255;
     }
-}
+}*/
