@@ -2,6 +2,7 @@ package com.wipon.recognition;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
@@ -31,6 +32,8 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     private static final String TAG = "OCR::Activity";
     private CameraBridgeViewBase _cameraBridgeViewBase;
+    private Boolean readPermissionsEnabled = false;
+    private Boolean writePermissionsEnabled = false;
 
     Mat frameResult;
 
@@ -70,9 +73,22 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         setContentView(R.layout.activity_main);
 
         // Permissions for Android 6+
-        ActivityCompat.requestPermissions(this,
-                new String[]{Manifest.permission.CAMERA},
-                1);
+        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.CAMERA},
+                    1);
+
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                    2);
+
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                    3);
+        } else {
+            // For Android < 6
+            OCRHelper.initTess(this, TAG);
+        }
 
         _cameraBridgeViewBase = findViewById(R.id.main_surface);
         _cameraBridgeViewBase.setVisibility(SurfaceView.VISIBLE);
@@ -100,19 +116,33 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String permissions[], @NonNull int[] grantResults) {
+
         switch (requestCode) {
             case 1: {
-                // If request is cancelled, the result arrays are empty.
-                if (grantResults.length <= 0
-                        || grantResults[0] != PackageManager.PERMISSION_GRANTED)
-                {
-                    // permission denied, boo! Disable the
-                    // functionality that depends on this permission.
-                    Toast.makeText(this, "Permission denied to read your External storage", Toast.LENGTH_SHORT).show();
+                if (grantResults.length <= 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(this, "Permission denied to Camera", Toast.LENGTH_SHORT).show();
                 }
             }
-            // other 'case' lines to check for other
-            // permissions this app might request
+            case 2: {
+                if (grantResults.length <= 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(this, "Permission denied to read your External storage", Toast.LENGTH_SHORT).show();
+                } else {
+                    readPermissionsEnabled = true;
+                    if (writePermissionsEnabled && readPermissionsEnabled){
+                        OCRHelper.initTess(this, TAG);
+                    }
+                }
+            }
+            case 3: {
+                if (grantResults.length <= 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(this, "Permission denied to write your External storage", Toast.LENGTH_SHORT).show();
+                } else {
+                    writePermissionsEnabled = true;
+                    if (writePermissionsEnabled && readPermissionsEnabled){
+                        OCRHelper.initTess(this, TAG);
+                    }
+                }
+            }
         }
     }
 
@@ -156,9 +186,15 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
                     2);*/
 
             Mat mROIGray2 = OCRHelper.submatNumber(newROI.x + OCRHelper.roiX, newROI.y + OCRHelper.roiY, newROI.width, newROI.height, matGray);
-            Mat goodMask = OCRHelper.binarizeNumber(mROIGray2);
-            Mat mask = goodMask.clone();
-            goodMask.copyTo(mROIGray2, mask);
+            Mat binMask = OCRHelper.binarizeNumber(mROIGray2);
+            Mat mask = binMask.clone();
+            binMask.copyTo(mROIGray2, mask);
+
+            // String numberText = "11";
+            String numberText = OCRHelper.extractText(binMask, TAG);
+
+            // Print recognized text
+            Imgproc.putText(matGray, String.format("Recognized: %s", numberText), new Point(100, 30), 3, 1, new Scalar(255, 255, 255, 255), 2);
 
             // Draw base rect for numbers
             OCRHelper.drawRect(matGray, new Scalar(170, 170, 170, 255));
@@ -166,7 +202,7 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
 
             mROIGray2.release();
             mask.release();
-            goodMask.release();
+            binMask.release();
         } else {
 
             // Draw base rect for numbers
@@ -180,7 +216,6 @@ public class MainActivity extends AppCompatActivity implements CameraBridgeViewB
         thresholded.release();
         mROIGray.release();
         matGray.release();
-        Log.d(TAG, "Recognized:");
 
         return frameResult;
 

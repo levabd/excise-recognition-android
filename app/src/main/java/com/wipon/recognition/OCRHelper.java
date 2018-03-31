@@ -1,5 +1,11 @@
 package com.wipon.recognition;
 
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.os.Environment;
+import android.util.Log;
+
+import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -11,6 +17,13 @@ import org.opencv.core.Size;
 import org.opencv.imgproc.CLAHE;
 import org.opencv.imgproc.Imgproc;
 
+import com.googlecode.tesseract.android.TessBaseAPI;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 
 /**
@@ -23,6 +36,9 @@ public class OCRHelper {
     public static int roiWidth = 330; //330;
     @SuppressWarnings("WeakerAccess")
     public static int roiHeight = 100; //100;
+
+    private static final String TESSDATA = File.separator + "tessdata";
+    private static final String DATA_PATH = Environment.getExternalStorageDirectory() + File.separator + "Tess";
 
     // DraW white rectangle around ROI
     // White color `new Scalar(220, 220, 220, 255)`
@@ -131,7 +147,7 @@ public class OCRHelper {
         int rightLine = 0;
         for (Rect r: goodMaskCandidates)
         {
-            if (((r.height + r.y > topLine) || (r.y < bottomLine)) &&
+            if ((r.height + r.y > topLine || r.y < bottomLine) &&
                     (topLine - r.y < 20) && (r.y + r.height - bottomLine < 20) &&
                     (r.width * r.height > 200))
             {
@@ -188,6 +204,68 @@ public class OCRHelper {
         clh.release();
 
         return threshold2;
+    }
+
+    public static void initTess(Context context, String LogTAG){
+        try{
+            File dir = new File(DATA_PATH+TESSDATA);
+            if(!dir.exists()){
+                Boolean success = dir.mkdirs();
+                if (!success){
+                    Log.w(LogTAG, "We can't create directory for some reason");
+                }
+            }
+            String fileList[] = context.getAssets().list("");
+            for(String fileName : fileList){
+                //Log.w(LogTAG, fileName);
+                String pathToDataFile = DATA_PATH + TESSDATA + File.separator + fileName;
+                //Log.w(LogTAG, pathToDataFile);
+                if(!(new File(pathToDataFile)).exists()){
+                    InputStream is = context.getAssets().open(fileName);
+                    OutputStream os = new FileOutputStream(pathToDataFile);
+                    byte [] buff = new byte[1024];
+                    int len;
+                    while((len = is.read(buff))>0){
+                        os.write(buff,0,len);
+                    }
+                    is.close();
+                    os.close();
+                }
+            }
+            Log.w(LogTAG, "Tess data initialised");
+        } catch (IOException e) {
+            Log.w(LogTAG, e.getMessage());
+        }
+    }
+
+    public static String extractText(Mat binaryMat, String LogTAG){
+
+        TessBaseAPI tessBaseApi = null;
+
+        try {
+            tessBaseApi = new TessBaseAPI();
+        } catch (Exception e) {
+            Log.e(LogTAG, "TessBaseAPI is null. TessFactory not returning tess object. " + e.getMessage());
+        }
+
+        Log.w(LogTAG, "Tess API create");
+        tessBaseApi.init(DATA_PATH, "eng");
+        Log.w(LogTAG, "Tess API created");
+
+        tessBaseApi.setVariable(TessBaseAPI.VAR_CHAR_WHITELIST, "1234567890");
+        tessBaseApi.setVariable(TessBaseAPI.VAR_CHAR_BLACKLIST, "!@#$%^&*()_+=-qwertyuiop[]}{POIU" +
+                "YTRWQasdASDfghFGHjklJKLl;L:'\"\\|~`xcvXCVbnmBNM,./<>?");
+        // tessBaseApi.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_WORD);
+        tessBaseApi.setPageSegMode(TessBaseAPI.PageSegMode.PSM_SINGLE_LINE);
+
+        Bitmap bmp = Bitmap.createBitmap(binaryMat.width(), binaryMat.height(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(binaryMat, bmp);
+
+        tessBaseApi.setImage(bmp);
+        String retStr = tessBaseApi.getUTF8Text();
+        tessBaseApi.end();
+
+        return retStr.replaceAll("\\s+","");
     }
 
     // Vertical one-dimensional projection of binary image (1D vertical histohram)
