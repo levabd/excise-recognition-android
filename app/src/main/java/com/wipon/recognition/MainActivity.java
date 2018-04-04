@@ -1,225 +1,360 @@
 package com.wipon.recognition;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.Dialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.os.Build;
+import android.hardware.Camera;
 import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
 import android.support.annotation.NonNull;
+import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
-import android.view.SurfaceView;
-import android.view.Window;
-import android.view.WindowManager;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.view.View;
 import android.widget.Toast;
 
-import org.opencv.android.BaseLoaderCallback;
-import org.opencv.android.CameraBridgeViewBase;
-import org.opencv.android.LoaderCallbackInterface;
-import org.opencv.android.OpenCVLoader;
-import org.opencv.core.Mat;
-import org.opencv.core.Point;
-import org.opencv.core.Rect;
-import org.opencv.core.Scalar;
-import org.opencv.imgproc.Imgproc;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GoogleApiAvailability;
+import com.wipon.recognition.ui.camera.CameraSource;
+import com.wipon.recognition.ui.camera.CameraSourcePreview;
+import com.wipon.recognition.ui.camera.GraphicOverlay;
+import com.google.android.gms.vision.text.TextRecognizer;
 
-public class MainActivity extends AppCompatActivity implements CameraBridgeViewBase.CvCameraViewListener2 {
+import java.io.IOException;
 
-    // Always load OpenCV globally
-    static {
-        System.loadLibrary("opencv_java3");
-    }
+/**
+ * Activity for the Ocr Detecting app.  This app detects text and displays the value with the
+ * rear facing camera. During detection overlay graphics are drawn to indicate the position,
+ * size, and contents of each TextBlock.
+ */
+public final class MainActivity extends AppCompatActivity {
+    private static final String TAG = "OcrCaptureActivity";
 
-    private static final String TAG = "OCR::Activity";
-    private CameraBridgeViewBase _cameraBridgeViewBase;
-    private Boolean readPermissionsEnabled = false;
-    private Boolean writePermissionsEnabled = false;
+    // Intent request code to handle updating play services if needed.
+    private static final int RC_HANDLE_GMS = 9001;
 
-    Mat frameResult;
+    // Permission request codes need to be < 256
+    private static final int RC_HANDLE_CAMERA_PERM = 2;
 
-    private BaseLoaderCallback _baseLoaderCallback = new BaseLoaderCallback(this) {
-        @Override
-        public void onManagerConnected(int status) {
-            switch (status) {
-                case LoaderCallbackInterface.SUCCESS: {
-                    Log.i(TAG, "OpenCV loaded successfully");
-                    // Load ndk built module, as specified in moduleName in build.gradle
-                    // after opencv initialization
-                    System.loadLibrary("native-lib");
-                    _cameraBridgeViewBase.setMinimumHeight(720);
-                    _cameraBridgeViewBase.setMinimumWidth(1280);
-                    _cameraBridgeViewBase.setMaxFrameSize(1280, 720);
-                    _cameraBridgeViewBase.enableView();
-                }
-                break;
-                default: {
-                    super.onManagerConnected(status);
-                }
-            }
-        }
-    };
+    // Constants used to pass extra data in the intent
+    public static final String AutoFocus = "AutoFocus";
+    public static final String UseFlash = "UseFlash";
+    public static final String TextBlockObject = "String";
 
+    private CameraSource mCameraSource;
+    private CameraSourcePreview mPreview;
+    private GraphicOverlay<OcrGraphic> mGraphicOverlay;
+
+    // Helper objects for detecting taps and pinches.
+    private ScaleGestureDetector scaleGestureDetector;
+    private GestureDetector gestureDetector;
+
+    /**
+     * Initializes the UI and creates the detector pipeline.
+     */
     @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        //Remove title bar
-        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
-
-        //Remove notification bar
-        this.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    public void onCreate(Bundle bundle) {
+        super.onCreate(bundle);
         setContentView(R.layout.activity_main);
 
-        // Permissions for Android 6+
-        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.CAMERA},
-                    1);
+        mPreview = (CameraSourcePreview) findViewById(R.id.preview);
+        mGraphicOverlay = (GraphicOverlay<OcrGraphic>) findViewById(R.id.graphicOverlay);
 
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
-                    2);
+        // Set good defaults for capturing text.
+        boolean autoFocus = true;
+        boolean useFlash = false;
 
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
-                    3);
+        // Check for the camera permission before accessing the camera.  If the
+        // permission is not granted yet, request permission.
+        int rc = ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA);
+        if (rc == PackageManager.PERMISSION_GRANTED) {
+            createCameraSource(autoFocus, useFlash);
         } else {
-            // For Android < 6
-            OCRHelper.initTess(this, TAG);
+            requestCameraPermission();
         }
 
-        _cameraBridgeViewBase = findViewById(R.id.main_surface);
-        _cameraBridgeViewBase.setVisibility(SurfaceView.VISIBLE);
-        _cameraBridgeViewBase.enableFpsMeter();
-        _cameraBridgeViewBase.setCvCameraViewListener(this);
+        gestureDetector = new GestureDetector(this, new CaptureGestureListener());
+        scaleGestureDetector = new ScaleGestureDetector(this, new ScaleListener());
+    }
+
+    /**
+     * Handles the requesting of the camera permission.  This includes
+     * showing a "Snackbar" message of why the permission is needed then
+     * sending the request.
+     */
+    private void requestCameraPermission() {
+        Log.w(TAG, "Camera permission is not granted. Requesting permission");
+
+        final String[] permissions = new String[]{Manifest.permission.CAMERA};
+
+        if (!ActivityCompat.shouldShowRequestPermissionRationale(this,
+                Manifest.permission.CAMERA)) {
+            ActivityCompat.requestPermissions(this, permissions, RC_HANDLE_CAMERA_PERM);
+            return;
+        }
+
+        final Activity thisActivity = this;
+
+        View.OnClickListener listener = new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                ActivityCompat.requestPermissions(thisActivity, permissions,
+                        RC_HANDLE_CAMERA_PERM);
+            }
+        };
+
+        Snackbar.make(mGraphicOverlay, R.string.permission_camera_rationale,
+                Snackbar.LENGTH_INDEFINITE)
+                .setAction(R.string.ok, listener)
+                .show();
     }
 
     @Override
-    public void onPause() {
-        super.onPause();
-        disableCamera();
+    public boolean onTouchEvent(MotionEvent e) {
+        boolean b = scaleGestureDetector.onTouchEvent(e);
+
+        boolean c = gestureDetector.onTouchEvent(e);
+
+        return b || c || super.onTouchEvent(e);
     }
 
+    /**
+     * Creates and starts the camera.  Note that this uses a higher resolution in comparison
+     * to other detection examples to enable the ocr detector to detect small text samples
+     * at long distances.
+     *
+     * Suppressing InlinedApi since there is a check that the minimum version is met before using
+     * the constant.
+     */
+    @SuppressLint("InlinedApi")
+    private void createCameraSource(boolean autoFocus, boolean useFlash) {
+        Context context = getApplicationContext();
+
+        TextRecognizer textRecognizer = new TextRecognizer.Builder(context).build();
+        // Set the TextRecognizer's Processor.
+        //textRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay));
+
+
+        ExciseTextRecognizer exciseTextRecognizer = new ExciseTextRecognizer(textRecognizer);
+        exciseTextRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay));
+
+        if (!textRecognizer.isOperational()) {
+            Log.w(TAG, "Detector dependencies are not yet available.");
+
+            // Check for low storage.  If there is low storage, the native library will not be
+            // downloaded, so detection will not become operational.
+            IntentFilter lowstorageFilter = new IntentFilter(Intent.ACTION_DEVICE_STORAGE_LOW);
+            boolean hasLowStorage = registerReceiver(null, lowstorageFilter) != null;
+
+            if (hasLowStorage) {
+                Toast.makeText(this, R.string.low_storage_error, Toast.LENGTH_LONG).show();
+                Log.w(TAG, getString(R.string.low_storage_error));
+            }
+        }
+        // mCameraSource using the TextRecognizer.
+        mCameraSource =
+                new CameraSource.Builder(getApplicationContext(), exciseTextRecognizer)
+                        .setFacing(CameraSource.CAMERA_FACING_BACK)
+                        .setRequestedPreviewSize(1280, 1024)
+                        .setRequestedFps(5.0f)
+                        .setFlashMode(useFlash ? Camera.Parameters.FLASH_MODE_TORCH : null)
+                        .setFocusMode(autoFocus ? Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE : null)
+                        .build();
+    }
+
+    /**
+     * Restarts the camera.
+     */
     @Override
-    public void onResume() {
+    protected void onResume() {
         super.onResume();
-        if (!OpenCVLoader.initDebug()) {
-            Log.d(TAG, "Internal OpenCV library not found. Using OpenCV Manager for initialization");
-            OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION, this, _baseLoaderCallback);
-        } else {
-            Log.d(TAG, "OpenCV library found inside package. Using it!");
-            _baseLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS);
-        }
+        startCameraSource();
     }
 
+    /**
+     * Stops the camera.
+     */
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String permissions[], @NonNull int[] grantResults) {
-
-        switch (requestCode) {
-            case 1: {
-                if (grantResults.length <= 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
-                    Toast.makeText(this, "Permission denied to Camera", Toast.LENGTH_SHORT).show();
-                }
-            }
-            case 2: {
-                if (grantResults.length <= 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
-                    Toast.makeText(this, "Permission denied to read your External storage", Toast.LENGTH_SHORT).show();
-                } else {
-                    readPermissionsEnabled = true;
-                    if (writePermissionsEnabled && readPermissionsEnabled){
-                        OCRHelper.initTess(this, TAG);
-                    }
-                }
-            }
-            case 3: {
-                if (grantResults.length <= 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
-                    Toast.makeText(this, "Permission denied to write your External storage", Toast.LENGTH_SHORT).show();
-                } else {
-                    writePermissionsEnabled = true;
-                    if (writePermissionsEnabled && readPermissionsEnabled){
-                        OCRHelper.initTess(this, TAG);
-                    }
-                }
-            }
+    protected void onPause() {
+        super.onPause();
+        if (mPreview != null) {
+            mPreview.stop();
         }
     }
 
-    public void onDestroy() {
+    /**
+     * Releases the resources associated with the camera source, the associated detectors, and the
+     * rest of the processing pipeline.
+     */
+    @Override
+    protected void onDestroy() {
         super.onDestroy();
-        disableCamera();
+        if (mPreview != null) {
+            mPreview.release();
+        }
     }
 
-    public void disableCamera() {
-        if (_cameraBridgeViewBase != null)
-            _cameraBridgeViewBase.disableView();
-    }
-
-    public void onCameraViewStarted(int width, int height) {
-        // mRgba = new Mat(height, width, CvType.CV_8UC3);
-        // mByte = new Mat(height, width, CvType.CV_8UC1);
-    }
-
-    public void onCameraViewStopped() {
-        // Explicitly deallocate Mats
-        frameResult.release();
-    }
-
-    public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
-        Mat matGray = inputFrame.gray();
-        // Mat mROIGray = cropROI(matGray); For production
-        Mat mROIGray = OCRHelper.submatROI(matGray);
-
-        Mat thresholded = OCRHelper.baseROIThreshold(mROIGray);
-        Rect newROI = OCRHelper.segmentNumber(thresholded);
-
-        // If detected ROI not very dope ;)
-        if ((newROI.width > 0.4*OCRHelper.roiWidth) && (newROI.width < OCRHelper.roiWidth) &&
-                (newROI.width / newROI.height > 7) && (newROI.width / newROI.height < 13))
-        {
-            /*Imgproc.rectangle(
-                    matGray,
-                    new Point(newROI.x + OCRHelper.roiX, newROI.y + OCRHelper.roiY),
-                    new Point(newROI.x+newROI.width + OCRHelper.roiX,newROI.y+newROI.height + OCRHelper.roiY),
-                    new Scalar(255, 255, 255, 255),
-                    2);*/
-
-            Mat mROIGray2 = OCRHelper.submatNumber(newROI.x + OCRHelper.roiX, newROI.y + OCRHelper.roiY, newROI.width, newROI.height, matGray);
-            Mat binMask = OCRHelper.binarizeNumber(mROIGray2);
-            Mat mask = binMask.clone();
-            binMask.copyTo(mROIGray2, mask);
-
-            // String numberText = "11";
-            String numberText = OCRHelper.extractText(binMask, TAG);
-
-            // Print recognized text
-            Imgproc.putText(matGray, String.format("Recognized: %s", numberText), new Point(100, 30), 3, 1, new Scalar(255, 255, 255, 255), 2);
-
-            // Draw base rect for numbers
-            OCRHelper.drawRect(matGray, new Scalar(170, 170, 170, 255));
-            frameResult = matGray.clone();
-
-            mROIGray2.release();
-            mask.release();
-            binMask.release();
-        } else {
-
-            // Draw base rect for numbers
-            OCRHelper.drawRect(matGray, new Scalar(170, 170, 170, 255));
-            frameResult = matGray.clone();
+    /**
+     * Callback for the result from requesting permissions. This method
+     * is invoked for every call on {@link #requestPermissions(String[], int)}.
+     * <p>
+     * <strong>Note:</strong> It is possible that the permissions request interaction
+     * with the user is interrupted. In this case you will receive empty permissions
+     * and results arrays which should be treated as a cancellation.
+     * </p>
+     *
+     * @param requestCode  The request code passed in {@link #requestPermissions(String[], int)}.
+     * @param permissions  The requested permissions. Never null.
+     * @param grantResults The grant results for the corresponding permissions
+     *                     which is either {@link PackageManager#PERMISSION_GRANTED}
+     *                     or {@link PackageManager#PERMISSION_DENIED}. Never null.
+     * @see #requestPermissions(String[], int)
+     */
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        if (requestCode != RC_HANDLE_CAMERA_PERM) {
+            Log.d(TAG, "Got unexpected permission result: " + requestCode);
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+            return;
         }
 
-        // frameResult = matGray.clone();
+        if (grantResults.length != 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            Log.d(TAG, "Camera permission granted - initialize the camera source");
+            // We have permission, so create the camerasource
+            boolean autoFocus = getIntent().getBooleanExtra(AutoFocus,false);
+            boolean useFlash = getIntent().getBooleanExtra(UseFlash, false);
+            createCameraSource(autoFocus, useFlash);
+            return;
+        }
 
-        // Clean up after yourself
-        thresholded.release();
-        mROIGray.release();
-        matGray.release();
+        Log.e(TAG, "Permission not granted: results len = " + grantResults.length +
+                " Result code = " + (grantResults.length > 0 ? grantResults[0] : "(empty)"));
 
-        return frameResult;
+        DialogInterface.OnClickListener listener = new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int id) {
+                finish();
+            }
+        };
 
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Multitracker sample")
+                .setMessage(R.string.no_camera_permission)
+                .setPositiveButton(R.string.ok, listener)
+                .show();
     }
 
-    //public native void salt(long matAddrGray, int nbrElem);
+    /**
+     * Starts or restarts the camera source, if it exists.  If the camera source doesn't exist yet
+     * (e.g., because onResume was called before the camera source was created), this will be called
+     * again when the camera source is created.
+     */
+    private void startCameraSource() throws SecurityException {
+        // check that the device has play services available.
+        int code = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(
+                getApplicationContext());
+        if (code != ConnectionResult.SUCCESS) {
+            Dialog dlg =
+                    GoogleApiAvailability.getInstance().getErrorDialog(this, code, RC_HANDLE_GMS);
+            dlg.show();
+        }
+
+        if (mCameraSource != null) {
+            try {
+                mPreview.start(mCameraSource, mGraphicOverlay);
+            } catch (IOException e) {
+                Log.e(TAG, "Unable to start camera source.", e);
+                mCameraSource.release();
+                mCameraSource = null;
+            }
+        }
+    }
+
+    /**
+     * onTap is called to speak the tapped TextBlock, if any, out loud.
+     *
+     * @param rawX - the raw position of the tap
+     * @param rawY - the raw position of the tap.
+     * @return true if the tap was on a TextBlock
+     */
+    private boolean onTap(float rawX, float rawY) {
+        // TODO: Speak the text when the user taps on screen.
+        return false;
+    }
+
+    private class CaptureGestureListener extends GestureDetector.SimpleOnGestureListener {
+
+        @Override
+        public boolean onSingleTapConfirmed(MotionEvent e) {
+            return onTap(e.getRawX(), e.getRawY()) || super.onSingleTapConfirmed(e);
+        }
+    }
+
+    private class ScaleListener implements ScaleGestureDetector.OnScaleGestureListener {
+
+        /**
+         * Responds to scaling events for a gesture in progress.
+         * Reported by pointer motion.
+         *
+         * @param detector The detector reporting the event - use this to
+         *                 retrieve extended info about event state.
+         * @return Whether or not the detector should consider this event
+         * as handled. If an event was not handled, the detector
+         * will continue to accumulate movement until an event is
+         * handled. This can be useful if an application, for example,
+         * only wants to update scaling factors if the change is
+         * greater than 0.01.
+         */
+        @Override
+        public boolean onScale(ScaleGestureDetector detector) {
+            return false;
+        }
+
+        /**
+         * Responds to the beginning of a scaling gesture. Reported by
+         * new pointers going down.
+         *
+         * @param detector The detector reporting the event - use this to
+         *                 retrieve extended info about event state.
+         * @return Whether or not the detector should continue recognizing
+         * this gesture. For example, if a gesture is beginning
+         * with a focal point outside of a region where it makes
+         * sense, onScaleBegin() may return false to ignore the
+         * rest of the gesture.
+         */
+        @Override
+        public boolean onScaleBegin(ScaleGestureDetector detector) {
+            return true;
+        }
+
+        /**
+         * Responds to the end of a scale gesture. Reported by existing
+         * pointers going up.
+         * <p/>
+         * Once a scale has ended, {@link ScaleGestureDetector#getFocusX()}
+         * and {@link ScaleGestureDetector#getFocusY()} will return focal point
+         * of the pointers remaining on the screen.
+         *
+         * @param detector The detector reporting the event - use this to
+         *                 retrieve extended info about event state.
+         */
+        @Override
+        public void onScaleEnd(ScaleGestureDetector detector) {
+            if (mCameraSource != null) {
+                mCameraSource.doZoom(detector.getScaleFactor());
+            }
+        }
+    }
 }
