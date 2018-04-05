@@ -5,7 +5,9 @@ import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
+import android.util.Log;
 import android.util.SparseArray;
+import android.view.Surface;
 
 import com.google.android.gms.vision.Detector;
 import com.google.android.gms.vision.Frame;
@@ -23,15 +25,12 @@ public class ExciseTextRecognizer extends Detector<TextBlock> {
     }
 
     public SparseArray<TextBlock> detect(Frame frame) {
-        // Frame processing
 
+        // Frame processing
         int width = frame.getMetadata().getWidth();
         int height = frame.getMetadata().getHeight();
 
-        /*int right = width / 2;
-        int left = 0;
-        int bottom = height / 2;
-        int top = 0;*/
+        // Bitmap coloredImage4Backend = frame.getBitmap(); <-- This is for you Max !!!
 
         YuvImage yuvImage = new YuvImage(frame.getGrayscaleImageData().array(), ImageFormat.NV21, width, height, null);
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
@@ -39,10 +38,13 @@ public class ExciseTextRecognizer extends Detector<TextBlock> {
         byte[] jpegArray = byteArrayOutputStream.toByteArray();
         Bitmap bitmap = BitmapFactory.decodeByteArray(jpegArray, 0, jpegArray.length);
 
+        Log.d("OCR", String.valueOf(frame.getMetadata().getRotation()));
+
         Frame croppedFrame =
                 new Frame.Builder()
                         .setBitmap(bitmap)
-                        .setRotation(frame.getMetadata().getRotation())
+                        .setRotation(Surface.ROTATION_180) // Faked rotation 180 degree for correct excise recognition
+                        // .setRotation(frame.getMetadata().getRotation()) That was right rotation !!!
                         .build();
 
         return mDelegate.detect(croppedFrame);

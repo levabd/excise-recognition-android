@@ -59,10 +59,6 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
         this.mId = id;
     }
 
-    public TextBlock getTextBlock() {
-        return mText;
-    }
-
     /**
      * Checks whether a point is within the bounding box of this graphic.
      * The provided point should be relative to this graphic's containing overlay.
@@ -70,8 +66,9 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
      * @param y A y parameter in the relative context of the canvas.
      * @return True if the provided point is contained within this graphic's bounding box.
      */
+    @SuppressWarnings("unused")
     public boolean contains(float x, float y) {
-        // TODO: Check if this graphic's text contains this point.
+        // This unused method required in interface. Check if this graphic's text contains this point.
         return false;
     }
 
@@ -80,27 +77,32 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
      */
     @Override
     public void draw(Canvas canvas) {
-        RectF baseRect = new RectF(300, 310, 300+330, 310+100);
+        RectF baseRect = new RectF(310, 300, 310+100, 300+330);
+
         baseRect.left = translateX(baseRect.left);
         baseRect.top = translateY(baseRect.top);
         baseRect.right = translateX(baseRect.right);
         baseRect.bottom = translateY(baseRect.bottom);
-        canvas.drawRect(baseRect, sMainRectPaint);
 
-        // TODO: Draw the text onto the canvas.
+        canvas.drawRect(baseRect, sMainRectPaint);
+        canvas.drawText("Frame height: " + canvas.getHeight() + "; Frame width: " + canvas.getWidth(), 10, 160, sTextPaint);
+
         if (mText == null) {
             return;
         }
 
         // Draws the bounding box around the TextBlock.
         RectF rect = new RectF(mText.getBoundingBox());
-        rect.left = translateX(rect.left + 300);
-        rect.top = translateY(rect.top + 310);
-        rect.right = translateX(rect.right + 300);
-        rect.bottom = translateY(rect.bottom + 310);
-        canvas.drawRect(rect, sRectPaint);
+
+        rect.left = translateX(rect.top + 310);
+        rect.top = translateY(330 - rect.right + 300);
+        rect.right = translateX(rect.bottom + 310);
+        rect.bottom = translateY(330 - rect.left + 300);
+        // canvas.drawRect(rect, sRectPaint);
+
+        canvas.drawText("Number left: " + rect.left + "; Number top: " + rect.top, 10, 230, sTextPaint);
 
         // Render the text at the bottom of the box.
-        canvas.drawText(mText.getValue(), rect.left, rect.bottom - 130, sTextPaint);
+        canvas.drawText(mText.getValue(), rect.left, rect.top - 130, sTextPaint);
     }
 }
