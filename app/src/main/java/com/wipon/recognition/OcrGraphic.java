@@ -4,6 +4,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.util.Log;
 
 import com.wipon.recognition.ui.camera.GraphicOverlay;
 import com.google.android.gms.vision.text.TextBlock;
@@ -21,12 +22,16 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
     private static Paint sRectPaint;
     private static Paint sMainRectPaint;
     private static Paint sTextPaint;
+    private static Paint sAdditionalTextPaint;
+    private static Paint sResultPaint;
     private final TextBlock mText;
+    private ExciseStohasticVerifier numberVerifier;
 
-    OcrGraphic(GraphicOverlay overlay, TextBlock text) {
+    OcrGraphic(GraphicOverlay overlay, TextBlock text, ExciseStohasticVerifier verifier) {
         super(overlay);
 
         mText = text;
+        numberVerifier = verifier;
 
         if (sRectPaint == null) {
             sRectPaint = new Paint();
@@ -42,10 +47,22 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
             sMainRectPaint.setStrokeWidth(4.0f);
         }
 
+        if (sAdditionalTextPaint == null) {
+            sAdditionalTextPaint = new Paint();
+            sAdditionalTextPaint.setColor(TEXT_COLOR);
+            sAdditionalTextPaint.setTextSize(54.0f);
+        }
+
         if (sTextPaint == null) {
             sTextPaint = new Paint();
-            sTextPaint.setColor(TEXT_COLOR);
+            sTextPaint.setColor(Color.YELLOW);
             sTextPaint.setTextSize(54.0f);
+        }
+
+        if (sResultPaint == null) {
+            sResultPaint = new Paint();
+            sResultPaint.setColor(Color.RED);
+            sResultPaint.setTextSize(54.0f);
         }
         // Redraw the overlay, as this graphic has been added.
         postInvalidate();
@@ -85,7 +102,7 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
         baseRect.bottom = translateY(baseRect.bottom);
 
         canvas.drawRect(baseRect, sMainRectPaint);
-        canvas.drawText("Frame height: " + canvas.getHeight() + "; Frame width: " + canvas.getWidth(), 10, 160, sTextPaint);
+        canvas.drawText("Frame height: " + canvas.getHeight() + "; Frame width: " + canvas.getWidth(), translateX(10), translateY(160), sAdditionalTextPaint);
 
         if (mText == null) {
             return;
@@ -100,9 +117,19 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
         rect.bottom = translateY(330 - rect.left + 300);
         // canvas.drawRect(rect, sRectPaint);
 
-        canvas.drawText("Number left: " + rect.left + "; Number top: " + rect.top, 10, 230, sTextPaint);
+        canvas.drawText("Number left: " + rect.left + "; Number top: " + rect.top, translateX(10), translateY(230), sAdditionalTextPaint);
 
-        // Render the text at the bottom of the box.
-        canvas.drawText(mText.getValue(), rect.left, rect.top - 130, sTextPaint);
+        canvas.drawText("Number: " + mText.getValue(), translateX(10), translateY(300), sTextPaint);
+
+        String answer = numberVerifier.lastPossibleNumber;
+
+        if (numberVerifier.getCandidatesCount() > 9){
+            answer = numberVerifier.calculatePossibleNumber();
+        }
+
+        Log.d("Processor", "Answer calculated! " + answer);
+
+        // Draw Possible answer
+        canvas.drawText("Answer: " + answer, translateX(10), translateY(370), sResultPaint);
     }
 }

@@ -53,6 +53,8 @@ public final class MainActivity extends AppCompatActivity {
     private CameraSourcePreview mPreview;
     private GraphicOverlay<OcrGraphic> mGraphicOverlay;
 
+    private ExciseStohasticVerifier numberVerifier = new ExciseStohasticVerifier();
+
     // Helper objects for detecting taps and pinches.
     private ScaleGestureDetector scaleGestureDetector;
 
@@ -140,7 +142,7 @@ public final class MainActivity extends AppCompatActivity {
 
 
         ExciseTextRecognizer exciseTextRecognizer = new ExciseTextRecognizer(textRecognizer);
-        exciseTextRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay));
+        exciseTextRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay, numberVerifier));
 
         if (!textRecognizer.isOperational()) {
             Log.w(TAG, "Detector dependencies are not yet available.");

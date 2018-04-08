@@ -38,8 +38,6 @@ public class ExciseTextRecognizer extends Detector<TextBlock> {
         byte[] jpegArray = byteArrayOutputStream.toByteArray();
         Bitmap bitmap = BitmapFactory.decodeByteArray(jpegArray, 0, jpegArray.length);
 
-        Log.d("OCR", String.valueOf(frame.getMetadata().getRotation()));
-
         Frame croppedFrame =
                 new Frame.Builder()
                         .setBitmap(bitmap)
