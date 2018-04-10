@@ -1,5 +1,6 @@
 package com.wipon.recognition;
 
+import android.content.SharedPreferences;
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -15,16 +16,24 @@ public class OcrDetectorProcessor implements Detector.Processor<TextBlock> {
 
     private GraphicOverlay<OcrGraphic> mGraphicOverlay;
     private ExciseStohasticVerifier numberVerifier;
+    private SharedPreferences mPrefs;
 
-    OcrDetectorProcessor(GraphicOverlay<OcrGraphic> ocrGraphicOverlay, ExciseStohasticVerifier verifier) {
+    OcrDetectorProcessor(GraphicOverlay<OcrGraphic> ocrGraphicOverlay, ExciseStohasticVerifier verifier, SharedPreferences prefs) {
         mGraphicOverlay = ocrGraphicOverlay;
         numberVerifier = verifier;
+        mPrefs = prefs;
     }
 
     @Override
     public void receiveDetections(Detector.Detections<TextBlock> detections) {
+
+        SharedPreferences.Editor editor = mPrefs.edit();
+        editor.putBoolean("LastDetectSuccessful", true);
+        editor.apply();
+
         mGraphicOverlay.clear();
         SparseArray<TextBlock> items = detections.getDetectedItems();
+
         int numberCandidate = 0;
         for (int i = 0; i < items.size(); ++i) {
             TextBlock item = items.valueAt(i);

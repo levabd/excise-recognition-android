@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.hardware.Camera;
 import android.os.Bundle;
@@ -124,6 +125,20 @@ public final class MainActivity extends AppCompatActivity {
         return b || super.onTouchEvent(e);
     }
 
+    private void showModal(String message) {
+        android.support.v7.app.AlertDialog.Builder alert = new android.support.v7.app.AlertDialog.Builder(this);
+        // alert.setTitle("Modal");
+        alert.setMessage(message);
+
+        alert.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int whichButton) {
+                // Nothing to fire
+            }
+        });
+
+        alert.show();
+    }
+
     /**
      * Creates and starts the camera.  Note that this uses a higher resolution in comparison
      * to other detection examples to enable the ocr detector to detect small text samples
@@ -135,14 +150,20 @@ public final class MainActivity extends AppCompatActivity {
     @SuppressLint("InlinedApi")
     private void createCameraSource(boolean autoFocus, boolean useFlash) {
         Context context = getApplicationContext();
+        SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
+        Boolean isLastDetectSuccessful = sharedPref.getBoolean("LastDetectSuccessful", true);
+
+        if (!isLastDetectSuccessful) {
+            showModal("Извините, но распознавание текста на архитектуре вашего процессора не поддерживается");
+            return;
+        }
 
         TextRecognizer textRecognizer = new TextRecognizer.Builder(context).build();
         // Set the TextRecognizer's Processor.
-        //textRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay));
+        //textRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay, numberVerifier, sharedPref));
 
-
-        ExciseTextRecognizer exciseTextRecognizer = new ExciseTextRecognizer(textRecognizer);
-        exciseTextRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay, numberVerifier));
+        ExciseTextRecognizer exciseTextRecognizer = new ExciseTextRecognizer(textRecognizer, sharedPref);
+        exciseTextRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay, numberVerifier, sharedPref));
 
         if (!textRecognizer.isOperational()) {
             Log.w(TAG, "Detector dependencies are not yet available.");

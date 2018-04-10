@@ -1,5 +1,7 @@
 package com.wipon.recognition;
 
+import android.util.Pair;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -14,6 +16,8 @@ public class ExciseStohasticVerifier {
 
     public String lastPossibleNumber = "";
 
+    public Integer[] charProbability = new Integer[9];
+
     ExciseStohasticVerifier(){
         /*map.put("O", "0");
         map.put("l", "1");
@@ -22,7 +26,7 @@ public class ExciseStohasticVerifier {
         map.put("|", "");
     }
 
-    private char getMaxOccuringChar(String str)
+    private Pair<Character, Integer> getMaxOccuringChar(String str)
     {
         int count[] = new int[255];
 
@@ -40,7 +44,7 @@ public class ExciseStohasticVerifier {
             }
         }
 
-        return result;
+        return new Pair<>(result, (100 * max / len));
     }
 
     public String calculatePossibleNumber(){
@@ -50,7 +54,9 @@ public class ExciseStohasticVerifier {
         for (int i = 0; i < 9; i++){
             if (charCandidates[i] != null) {
                 if (charCandidates[i].length() > 0) {
-                    possibleNumber.append(getMaxOccuringChar(charCandidates[i]));
+                    Pair<Character, Integer> prediction = getMaxOccuringChar(charCandidates[i]);
+                    possibleNumber.append(prediction.first);
+                    charProbability[i] = prediction.second;
                 }
             }
         }
@@ -82,13 +88,10 @@ public class ExciseStohasticVerifier {
         }
 
         String number = str.replaceAll("[^0-9]+", "");
-        if (number.length() > 7){
+        if (number.length() > 8){
             candidates.add(number);
-            for (int j = 1; j < 9; j++){
+            for (int j = 1; j < 10; j++){
                 charCandidates[9 - j] += number.charAt(number.length() - j);
-            }
-            if (number.length() > 8){
-                charCandidates[0] += number.charAt(number.length() - 9);
             }
             return true;
         }

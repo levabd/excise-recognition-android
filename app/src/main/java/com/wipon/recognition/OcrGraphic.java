@@ -4,6 +4,14 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.text.DynamicLayout;
+import android.text.Editable;
+import android.text.Layout;
+import android.text.Spannable;
+import android.text.SpannableString;
+import android.text.StaticLayout;
+import android.text.style.CharacterStyle;
+import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 
 import com.wipon.recognition.ui.camera.GraphicOverlay;
@@ -24,6 +32,7 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
     private static Paint sTextPaint;
     private static Paint sAdditionalTextPaint;
     private static Paint sResultPaint;
+    private static Paint sBadResultPaint;
     private final TextBlock mText;
     private ExciseStohasticVerifier numberVerifier;
 
@@ -61,8 +70,14 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
 
         if (sResultPaint == null) {
             sResultPaint = new Paint();
-            sResultPaint.setColor(Color.RED);
+            sResultPaint.setColor(Color.GREEN);
             sResultPaint.setTextSize(54.0f);
+        }
+
+        if (sBadResultPaint == null) {
+            sBadResultPaint = new Paint();
+            sBadResultPaint.setColor(Color.RED);
+            sBadResultPaint.setTextSize(54.0f);
         }
         // Redraw the overlay, as this graphic has been added.
         postInvalidate();
@@ -127,9 +142,22 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
             answer = numberVerifier.calculatePossibleNumber();
         }
 
-        Log.d("Processor", "Answer calculated! " + answer);
+        if (answer.length() > 0) {
+            Log.d("Processor", "Answer calculated! " + answer);
 
-        // Draw Possible answer
-        canvas.drawText("Answer: " + answer, translateX(10), translateY(370), sResultPaint);
+            canvas.drawText("Answer: ", translateX(10), translateY(370), sResultPaint);
+            // draw each char one at a time
+            for (int i = 0; i < answer.length(); i++) {
+                if (numberVerifier.charProbability[i] < 60) {
+                    canvas.drawText("" + answer.charAt(i), translateX(10 + 20 * (8 + i)), translateY(370), sBadResultPaint);
+                } else {
+                    canvas.drawText("" + answer.charAt(i), translateX(10 + 20 * (8 + i)), translateY(370), sResultPaint);
+                }
+            }
+
+            // Draw Possible answer
+            // canvas.drawText("Answer: " + answer, translateX(10), translateY(370), sResultPaint);
+
+        }
     }
 }

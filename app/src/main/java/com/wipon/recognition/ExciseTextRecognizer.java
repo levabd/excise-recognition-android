@@ -1,5 +1,7 @@
 package com.wipon.recognition;
 
+import android.annotation.SuppressLint;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
@@ -19,9 +21,11 @@ import java.io.ByteArrayOutputStream;
 
 public class ExciseTextRecognizer extends Detector<TextBlock> {
     private TextRecognizer mDelegate;
+    private SharedPreferences mPrefs;
 
-    ExciseTextRecognizer(TextRecognizer delegate) {
+    ExciseTextRecognizer(TextRecognizer delegate, SharedPreferences prefs) {
         mDelegate = delegate;
+        mPrefs = prefs;
     }
 
     public SparseArray<TextBlock> detect(Frame frame) {
@@ -45,7 +49,20 @@ public class ExciseTextRecognizer extends Detector<TextBlock> {
                         // .setRotation(frame.getMetadata().getRotation()) That was right rotation !!!
                         .build();
 
-        return mDelegate.detect(croppedFrame);
+        boolean isLastDetectSuccessful = mPrefs.getBoolean("LastDetectSuccessful", true);
+        SparseArray<TextBlock> result;
+
+        if (isLastDetectSuccessful) {
+            SharedPreferences.Editor editor = mPrefs.edit();
+            editor.putBoolean("LastDetectSuccessful", false);
+            editor.apply();
+            result = mDelegate.detect(croppedFrame);
+            // result = mDelegate.detect(frame);
+        } else {
+            result = new SparseArray<>();
+        }
+
+        return result;
         //return mDelegate.detect(frame);
     }
 
