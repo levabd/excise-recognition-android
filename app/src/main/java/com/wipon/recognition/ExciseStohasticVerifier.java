@@ -19,11 +19,30 @@ public class ExciseStohasticVerifier {
     public Integer[] charProbability = new Integer[9];
 
     ExciseStohasticVerifier(){
-        /*map.put("O", "0");
-        map.put("l", "1");
-        map.put("A", "4");
-        map.put("D", "0");*/
+        // Must have
         map.put("|", "");
+
+        // Optional
+        map.put("O", "0");
+        map.put("o", "0");
+        map.put("Z", "7");
+        map.put("z", "7");
+        map.put("A", "4");
+        map.put("T", "7");
+        map.put("S", "5");
+        map.put("s", "5");
+        map.put("g", "4");
+        map.put("D", "0");
+        map.put("p", "0");
+        map.put("e", "8");
+        map.put("B", "8");
+        map.put("b", "6");
+        map.put("G", "6");
+
+        // Very optional
+        map.put("t", "1");
+        map.put("a", "4");
+        map.put("X", "7");
     }
 
     private Pair<Character, Integer> getMaxOccuringChar(String str)
@@ -45,6 +64,13 @@ public class ExciseStohasticVerifier {
         }
 
         return new Pair<>(result, (100 * max / len));
+    }
+
+    public void clearAccumulator(){
+        charProbability = new Integer[9];
+        lastPossibleNumber = "";
+        candidates = new ArrayList<>();
+        charCandidates = new String[9];
     }
 
     public String calculatePossibleNumber(){

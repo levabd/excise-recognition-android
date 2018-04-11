@@ -162,7 +162,7 @@ public final class MainActivity extends AppCompatActivity {
         // Set the TextRecognizer's Processor.
         //textRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay, numberVerifier, sharedPref));
 
-        ExciseTextRecognizer exciseTextRecognizer = new ExciseTextRecognizer(textRecognizer, sharedPref);
+        ExciseTextRecognizer exciseTextRecognizer = new ExciseTextRecognizer(textRecognizer, sharedPref, this);
         exciseTextRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay, numberVerifier, sharedPref));
 
         if (!textRecognizer.isOperational()) {

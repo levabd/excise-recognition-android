@@ -1,6 +1,8 @@
 package com.wipon.recognition;
 
 import android.annotation.SuppressLint;
+import android.content.Context;
+import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -22,10 +24,12 @@ import java.io.ByteArrayOutputStream;
 public class ExciseTextRecognizer extends Detector<TextBlock> {
     private TextRecognizer mDelegate;
     private SharedPreferences mPrefs;
+    private Context mContext;
 
-    ExciseTextRecognizer(TextRecognizer delegate, SharedPreferences prefs) {
+    ExciseTextRecognizer(TextRecognizer delegate, SharedPreferences prefs, Context context) {
         mDelegate = delegate;
         mPrefs = prefs;
+        mContext = context;
     }
 
     public SparseArray<TextBlock> detect(Frame frame) {
@@ -59,6 +63,24 @@ public class ExciseTextRecognizer extends Detector<TextBlock> {
             result = mDelegate.detect(croppedFrame);
             // result = mDelegate.detect(frame);
         } else {
+            boolean isMessageShowed = mPrefs.getBoolean("MessageShowed", false);
+            if (!isMessageShowed){
+                android.support.v7.app.AlertDialog.Builder alert = new android.support.v7.app.AlertDialog.Builder(mContext);
+                // alert.setTitle("Modal");
+                alert.setMessage("Извините, но распознавание текста на архитектуре вашего процессора не поддерживается");
+
+                alert.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        // Nothing to fire
+                    }
+                });
+
+                alert.show();
+
+                SharedPreferences.Editor editor = mPrefs.edit();
+                editor.putBoolean("MessageShowed", true);
+                editor.apply();
+            }
             result = new SparseArray<>();
         }
 
