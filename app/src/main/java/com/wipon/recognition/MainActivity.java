@@ -17,10 +17,14 @@ import android.support.annotation.NonNull;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import android.widget.ImageButton;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
@@ -31,6 +35,7 @@ import com.wipon.recognition.ui.camera.GraphicOverlay;
 import com.google.android.gms.vision.text.TextRecognizer;
 
 import java.io.IOException;
+import java.util.Locale;
 
 /**
  * Activity for the Ocr Detecting app.  This app detects text and displays the value with the
@@ -50,14 +55,30 @@ public final class MainActivity extends AppCompatActivity {
     public static final String AutoFocus = "AutoFocus";
     public static final String UseFlash = "UseFlash";
 
+    private Double bottomProbabilityThreshold = 0.4;
+    private boolean recognizerEnabled = true;
+    private ExciseTextRecognizer exciseTextRecognizer;
+
     private CameraSource mCameraSource;
     private CameraSourcePreview mPreview;
     private GraphicOverlay<OcrGraphic> mGraphicOverlay;
+    private ImageButton mPlayPause;
+    private TextView mBottomProbabilityThreshold;
 
-    private ExciseStohasticVerifier numberVerifier = new ExciseStohasticVerifier();
+    private ExciseStohasticVerifier numberVerifier = new ExciseStohasticVerifier(3, bottomProbabilityThreshold);
 
     // Helper objects for detecting taps and pinches.
     private ScaleGestureDetector scaleGestureDetector;
+
+    boolean tryParseInt(String value) {
+        try {
+            //noinspection ResultOfMethodCallIgnored
+            Integer.parseInt(value);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
 
     /**
      * Initializes the UI and creates the detector pipeline.
@@ -69,6 +90,45 @@ public final class MainActivity extends AppCompatActivity {
 
         mPreview = findViewById(R.id.preview);
         mGraphicOverlay = findViewById(R.id.graphicOverlay);
+        mPlayPause = findViewById(R.id.imageButtonPlay);
+        ImageButton mClearStack = findViewById(R.id.imageButtonClearStack);
+        mBottomProbabilityThreshold = findViewById(R.id.candidateCount);
+
+        mBottomProbabilityThreshold.setText(String.format(Locale.getDefault(), "%f", bottomProbabilityThreshold));
+
+        mPlayPause.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                recognizerEnabled = !recognizerEnabled;
+                exciseTextRecognizer.enabled = recognizerEnabled;
+                mPlayPause.setImageResource(recognizerEnabled ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
+            }
+        });
+
+        mClearStack.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                numberVerifier.clearAccumulator();
+            }
+        });
+
+        mBottomProbabilityThreshold.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void afterTextChanged(Editable s) {
+                if (tryParseInt(mBottomProbabilityThreshold.getText().toString())) {
+                    bottomProbabilityThreshold = Double.parseDouble(mBottomProbabilityThreshold.getText().toString());
+                }
+
+                numberVerifier.setBottomProbabilityThreshold(bottomProbabilityThreshold);
+            }
+
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) { }
+        });
+
 
         // Set good defaults for capturing number.
         // autoFocus = true;
@@ -125,14 +185,22 @@ public final class MainActivity extends AppCompatActivity {
         return b || super.onTouchEvent(e);
     }
 
-    private void showModal(String message) {
+    private void showModal(final SharedPreferences sharedPref) {
         android.support.v7.app.AlertDialog.Builder alert = new android.support.v7.app.AlertDialog.Builder(this);
         // alert.setTitle("Modal");
-        alert.setMessage(message);
+        alert.setMessage("Извините, но распознавание текста на архитектуре вашего процессора может не поддерживаться");
 
         alert.setPositiveButton("OK", new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int whichButton) {
                 // Nothing to fire
+            }
+        });
+
+        alert.setNegativeButton("Я знаю на что иду", new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int whichButton) {
+                SharedPreferences.Editor editor = sharedPref.edit();
+                editor.putBoolean("LastDetectSuccessful", true);
+                editor.apply();
             }
         });
 
@@ -150,19 +218,22 @@ public final class MainActivity extends AppCompatActivity {
     @SuppressLint("InlinedApi")
     private void createCameraSource(boolean autoFocus, boolean useFlash) {
         Context context = getApplicationContext();
-        SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
+        final SharedPreferences sharedPref = this.getPreferences(Context.MODE_PRIVATE);
         Boolean isLastDetectSuccessful = sharedPref.getBoolean("LastDetectSuccessful", true);
 
         if (!isLastDetectSuccessful) {
-            showModal("Извините, но распознавание текста на архитектуре вашего процессора не поддерживается");
-            return;
+            showModal(sharedPref);
+            isLastDetectSuccessful = sharedPref.getBoolean("LastDetectSuccessful", true);
+            if (!isLastDetectSuccessful) {
+                return;
+            }
         }
 
         TextRecognizer textRecognizer = new TextRecognizer.Builder(context).build();
         // Set the TextRecognizer's Processor.
         //textRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay, numberVerifier, sharedPref));
 
-        ExciseTextRecognizer exciseTextRecognizer = new ExciseTextRecognizer(textRecognizer, sharedPref, this);
+        exciseTextRecognizer = new ExciseTextRecognizer(textRecognizer, sharedPref, this);
         exciseTextRecognizer.setProcessor(new OcrDetectorProcessor(mGraphicOverlay, numberVerifier, sharedPref));
 
         if (!textRecognizer.isOperational()) {

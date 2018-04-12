@@ -10,4 +10,8 @@
     <string name="ocr_success">Number read successfully</string>
     <string name="ocr_failure">No number captured</string>
     <string name="ocr_error">"Error reading number: %1$s"</string>
+    <string name="play">play</string>
+    <string name="candidates_number">Bottom probability treshold</string>
+    <string name="uncertain_percentage">Uncertain percentage</string>
+    <string name="clear_stack">Clear stack</string>
 </resources>

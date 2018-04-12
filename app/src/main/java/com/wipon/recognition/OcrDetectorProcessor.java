@@ -33,6 +33,12 @@ public class OcrDetectorProcessor implements Detector.Processor<TextBlock> {
 
         mGraphicOverlay.clear();
         SparseArray<TextBlock> items = detections.getDetectedItems();
+        if (items.size() > 0){
+            if (items.valueAt(0) != null){
+                editor.putBoolean("WasRecognition", true);
+                editor.apply();
+            }
+        }
 
         int numberCandidate = 0;
         for (int i = 0; i < items.size(); ++i) {

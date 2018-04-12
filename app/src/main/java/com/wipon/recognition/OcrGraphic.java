@@ -1,5 +1,6 @@
 package com.wipon.recognition;
 
+import android.animation.ArgbEvaluator;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -17,6 +18,8 @@ import android.util.Log;
 import com.wipon.recognition.ui.camera.GraphicOverlay;
 import com.google.android.gms.vision.text.TextBlock;
 
+import java.util.ArrayList;
+
 /**
  * Graphic instance for rendering TextBlock position, size, and ID within an associated graphic
  * overlay view.
@@ -31,9 +34,8 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
     private static Paint sMainRectPaint;
     private static Paint sTextPaint;
     private static Paint sAdditionalTextPaint;
-    private static Paint sResultPaint;
-    private static Paint sBadResultPaint;
-    private final TextBlock mText;
+    private static ArrayList<Paint> sResultPaint = new ArrayList<>();
+    private static TextBlock mText;
     private ExciseStohasticVerifier numberVerifier;
 
     OcrGraphic(GraphicOverlay overlay, TextBlock text, ExciseStohasticVerifier verifier) {
@@ -68,16 +70,11 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
             sTextPaint.setTextSize(54.0f);
         }
 
-        if (sResultPaint == null) {
-            sResultPaint = new Paint();
-            sResultPaint.setColor(Color.GREEN);
-            sResultPaint.setTextSize(54.0f);
-        }
-
-        if (sBadResultPaint == null) {
-            sBadResultPaint = new Paint();
-            sBadResultPaint.setColor(Color.RED);
-            sBadResultPaint.setTextSize(54.0f);
+        for (int i = 0; i < 10; i++) {
+            Paint tPaint = new Paint();
+            tPaint.setColor(Color.GREEN);
+            tPaint.setTextSize(54.0f);
+            sResultPaint.add(tPaint);
         }
         // Redraw the overlay, as this graphic has been added.
         postInvalidate();
@@ -102,6 +99,22 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
     public boolean contains(float x, float y) {
         // This unused method required in interface. Check if this graphic's text contains this point.
         return false;
+    }
+
+    private float interpolate(float a, float b, float proportion) {
+        return (a + ((b - a) * proportion));
+    }
+
+    /** Returns an interpoloated color, between <code>a</code> and <code>b</code> */
+    private int interpolateColor(int a, int b, Double proportion) {
+        float[] hsva = new float[3];
+        float[] hsvb = new float[3];
+        Color.colorToHSV(a, hsva);
+        Color.colorToHSV(b, hsvb);
+        for (int i = 0; i < 3; i++) {
+            hsvb[i] = interpolate(hsva[i], hsvb[i], proportion.floatValue());
+        }
+        return Color.HSVToColor(hsvb);
     }
 
     /**
@@ -138,21 +151,17 @@ public class OcrGraphic extends GraphicOverlay.Graphic {
 
         String answer = numberVerifier.lastPossibleNumber;
 
-        if (numberVerifier.getCandidatesCount() > 9){
-            answer = numberVerifier.calculatePossibleNumber();
-        }
+        answer = numberVerifier.calculatePossibleNumber();
 
         if (answer.length() > 0) {
             Log.d("Processor", "Answer calculated! " + answer);
 
-            canvas.drawText("Answer: ", translateX(10), translateY(370), sResultPaint);
+            canvas.drawText("Answer: ", translateX(10), translateY(370), sResultPaint.get(9));
             // draw each char one at a time
             for (int i = 0; i < answer.length(); i++) {
-                if (numberVerifier.charProbability[i] < 60) {
-                    canvas.drawText("" + answer.charAt(i), translateX(10 + 20 * (8 + i)), translateY(370), sBadResultPaint);
-                } else {
-                    canvas.drawText("" + answer.charAt(i), translateX(10 + 20 * (8 + i)), translateY(370), sResultPaint);
-                }
+                //Color.rgb(221, 0, 0)
+                sResultPaint.get(i).setColor(interpolateColor(Color.RED, Color.GREEN, numberVerifier.charProbability[i]));
+                canvas.drawText("" + answer.charAt(i), translateX(10 + 20 * (8 + i)), translateY(370), sResultPaint.get(i));
             }
 
             // Draw Possible answer

@@ -26,13 +26,20 @@ public class ExciseTextRecognizer extends Detector<TextBlock> {
     private SharedPreferences mPrefs;
     private Context mContext;
 
+    public Boolean enabled;
+
     ExciseTextRecognizer(TextRecognizer delegate, SharedPreferences prefs, Context context) {
         mDelegate = delegate;
         mPrefs = prefs;
         mContext = context;
+        enabled = true;
     }
 
     public SparseArray<TextBlock> detect(Frame frame) {
+
+        if (!enabled){
+            return new SparseArray<>();
+        }
 
         // Frame processing
         int width = frame.getMetadata().getWidth();
@@ -54,20 +61,25 @@ public class ExciseTextRecognizer extends Detector<TextBlock> {
                         .build();
 
         boolean isLastDetectSuccessful = mPrefs.getBoolean("LastDetectSuccessful", true);
+        boolean wasRecognition = mPrefs.getBoolean("WasRecognition", false);
         SparseArray<TextBlock> result;
 
-        if (isLastDetectSuccessful) {
+        if (isLastDetectSuccessful || wasRecognition) {
             SharedPreferences.Editor editor = mPrefs.edit();
             editor.putBoolean("LastDetectSuccessful", false);
             editor.apply();
+
             result = mDelegate.detect(croppedFrame);
             // result = mDelegate.detect(frame);
+
+            editor.putBoolean("LastDetectSuccessful", true);
+            editor.commit();
         } else {
             boolean isMessageShowed = mPrefs.getBoolean("MessageShowed", false);
             if (!isMessageShowed){
                 android.support.v7.app.AlertDialog.Builder alert = new android.support.v7.app.AlertDialog.Builder(mContext);
                 // alert.setTitle("Modal");
-                alert.setMessage("Извините, но распознавание текста на архитектуре вашего процессора не поддерживается");
+                alert.setMessage("Извините, но распознавание текста на архитектуре вашего процессора может не поддерживаться");
 
                 alert.setPositiveButton("OK", new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface dialog, int whichButton) {
